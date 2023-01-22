@@ -3,51 +3,46 @@
   provided. A connection is a hash-map describing how to connect to InfluxDB and
   could look like the following:
     {:url \"http://localhost:8086\"
-     :username \"root\"
-     :password \"root\"}
+     :token \"foo-token\"
+     :org \"some-org\"}
   Only the :url is mandatory."
   (:require [clj-http.client :as http-client]
             [clojure.string :as str]
-            [jsonista.core :as json]))
+            [jsonista.core :as json]
+            [clojure.data.csv :as csv]))
 
-(defn prep-query-params
-  "Constructs query params automatically including authentication from
-  connection if present."
-  [{:keys [username password] :as conn} base-params & overwrite-params]
-  (let [auth-params (when (and username password)
-                      {"u" username "p" password})]
-    (apply merge (conj overwrite-params base-params auth-params))))
+(def api-path "/api/v2")
 
-(def available-methods
-  {::read http-client/get
-   ::manage http-client/post})
-
-(defn query
-  "Takes a connection along with query method and the actual query which can be
-  either a string (single query) or a list/vector of strings (multiple queries).
-  Optionally a fourth argument containing query params can be provided. For a
-  list of valid query params see:
-  https://docs.influxdata.com/influxdb/v1.7/tools/api/#query-string-parameters-1"
-  ([conn method q]
-   (query conn method q {}))
-  ([conn method q query-params]
-   (let [request-fn (or (method available-methods)
-                        (throw (ex-info "Unknown query method." {:method method})))]
-     (request-fn
-      (str (:url conn) "/query")
-      {:query-params (prep-query-params conn query-params
-                                        {"q" (if (string? q) q (str/join ";" q))})}))))
+(defn read
+  "Takes a connection, a flux query q to execute,
+   and an optional map of parameters p to inject into the query."
+  ([conn q]
+   (read conn q {}))
+  ([conn q p]
+   (let [body (json/write-value-as-string {:query q
+                                           :params p})]
+     (http-client/post (str (:url conn) api-path "/query")
+                       {:headers {:authorization (str "Token " (:token conn))
+                                  :content-type "application/json"}
+                        :query-params {:org (:org conn)}
+                        :body body}))))
 
 (defn write
-  "For valid query params see: https://docs.influxdata.com/influxdb/v1.7/tools/api/#query-string-parameters-2"
-  ([conn db data]
-   (write conn db data {}))
-  ([conn db data query-params]
-   (http-client/post
-      (str (:url conn) "/write")
-      {:content-type :x-www-form-urlencoded
-       :body data
-       :query-params (prep-query-params conn query-params {"db" db})})))
+  "Writes data provided in line protocol to the bucket."
+  [conn bucket data]
+  (http-client/post
+   (str (:url conn) api-path "/write")
+   {:headers {:authorization (str "Token " (:token conn))}
+    :body data
+    :query-params {:org (:org conn)
+                   :bucket bucket}}))
+
+(defn csv-data->maps [csv-data]
+  (map zipmap
+       (->> (first csv-data) ;; First row is the header
+            (map keyword)    ;; Drop if you want string keys instead
+            repeat)
+	   (rest csv-data)))
 
 (defn unwrap
   "Takes a http response from the API endpoint and converts it to a Clojure data
@@ -55,5 +50,5 @@
   [response]
   (-> response
       :body
-      (json/read-value)
-      (get "results")))
+      csv/read-csv
+      csv-data->maps))

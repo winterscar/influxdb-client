@@ -1,10 +1,10 @@
 # InfluxDB client for Clojure
 
-This client library communicates with the [InfluxDB HTTP API][1] (ver 1.7) and
+This client library communicates with the [InfluxDB HTTP API][1] (v2) and
 is very small. It is still lacking a few debugging features but has the
 important things for managing, reading from and writing to databases.
 
-[1]: https://docs.influxdata.com/influxdb/v1.7/tools/api
+[1]:https://docs.influxdata.com/influxdb/v2.6/api/ 
 
 
 ## Installation
@@ -24,8 +24,9 @@ Specify how the client reaches the InfluxDB API using a hash-map:
 
 ```clojure
 {:url "http://localhost:8086"
- :username "root"    ; optional
- :password "secret"} ; optional
+ :token "string"
+ :org "string" ;; optional for cloud
+ }
 ```
 
 
@@ -45,28 +46,11 @@ If you don't already have an InfluxDB server running Docker can be used:
 
 ### Read
 
-This corresponds to `GET /query` endpoint when using the method `::client/read`.
-This will work with any query that reads from the database (`SELECT` and
-`SHOW`):
+This corresponds to `GET /query` endpoint. Pass a string flux query and an optional
+parameters map.
 
-    user > (unwrap (query conn ::client/read "SHOW DATABASES"))
-    [{"series" [{"values" [["_internal"]],
-                 "columns" ["name"],
-                 "name" "databases"}],
-      "statement_id" 0}
-
-
-### Manage
-
-This corresponds to `POST /query` endpoint when using the method
-`::client/manage`. This will work with any query that changes anything in the
-database (`SELECT INTO`, `ALTER`, `CREATE`, `DELETE`, `DROP`, `GRANT`, `KILL`
-and `REVOKE`):
-
-    user > (unwrap (query conn ::client/manage "CREATE DATABASE mydb"))
-    [{"statement_id" 0}]
-
-For inserting data see the next section "Write".
+    user > (unwrap (query conn "<some-flux-here>" {:bucket "bar"}))
+    [{:foo 1} {:foo 2}] ...
 
 
 ### Write
