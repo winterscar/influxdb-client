@@ -1,3 +1,6 @@
 /target/
 pom.xml*
 .lein*
+.idea
+.nrepl-port
+influxdb-client.iml
